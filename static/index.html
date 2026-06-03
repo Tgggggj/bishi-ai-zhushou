@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BYO API Practice Assistant</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">A</div>
+          <div>
+            <h1>练习助手</h1>
+            <p>BYO API</p>
+          </div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" data-view="solve">解题</button>
+          <button class="nav-item" data-view="bank">题库</button>
+          <button class="nav-item" data-view="history">历史</button>
+          <button class="nav-item" data-view="settings">模型</button>
+        </nav>
+        <div class="local-status">
+          <span class="status-dot"></span>
+          <span>127.0.0.1 本地服务</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">Practice only</div>
+            <h2 id="viewTitle">题目解析</h2>
+          </div>
+          <div class="top-actions">
+            <button class="ghost" id="clearBtn" type="button">清空</button>
+            <button class="primary" id="runBtn" type="button">解析</button>
+          </div>
+        </header>
+
+        <section class="view active" id="solveView">
+          <div class="workspace">
+            <section class="panel input-panel">
+              <div class="panel-head">
+                <h3>输入</h3>
+                <select id="modeSelect" aria-label="模式">
+                  <option value="general">综合题</option>
+                  <option value="coding">编程题</option>
+                  <option value="reasoning">行测/图推</option>
+                  <option value="interview">模拟面试</option>
+                  <option value="review">复盘讲解</option>
+                </select>
+              </div>
+
+              <div class="control-grid">
+                <label>
+                  <span>回答风格</span>
+                  <select id="styleSelect">
+                    <option value="answer">答案 + 解析</option>
+                    <option value="steps">只给思路</option>
+                    <option value="concise">精简答案</option>
+                    <option value="coach">训练教练</option>
+                  </select>
+                </label>
+                <label>
+                  <span>编程语言</span>
+                  <select id="languageSelect">
+                    <option>Python</option>
+                    <option>Java</option>
+                    <option>C++</option>
+                    <option>JavaScript</option>
+                    <option>Go</option>
+                  </select>
+                </label>
+              </div>
+
+              <textarea id="questionInput" spellcheck="false" placeholder="粘贴练习题、面试题、代码或复盘材料"></textarea>
+
+              <div class="drop-zone" id="dropZone">
+                <input id="imageInput" type="file" accept="image/*" multiple />
+                <div>
+                  <strong>图片题</strong>
+                  <span>上传、拖入或从剪贴板粘贴</span>
+                </div>
+                <button class="small" id="pickImageBtn" type="button">选择图片</button>
+              </div>
+
+              <div class="thumbs" id="thumbs"></div>
+
+              <div class="input-actions">
+                <button class="ghost" id="saveBankBtn" type="button">加入题库</button>
+                <button class="ghost" id="copyPromptBtn" type="button">复制提示</button>
+              </div>
+            </section>
+
+            <section class="panel output-panel">
+              <div class="panel-head">
+                <h3>输出</h3>
+                <div class="meta" id="answerMeta">等待解析</div>
+              </div>
+              <div class="answer" id="answerBox">
+                <div class="empty-state">配置模型后输入题目开始练习。</div>
+              </div>
+              <div class="output-actions">
+                <button class="ghost" id="copyAnswerBtn" type="button">复制答案</button>
+                <button class="ghost" id="saveHistoryBtn" type="button">保存记录</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="bankView">
+          <section class="panel full-panel">
+            <div class="panel-head">
+              <h3>题库</h3>
+              <div class="inline-actions">
+                <button class="ghost" id="exportBankBtn" type="button">导出</button>
+                <button class="ghost" id="importBankBtn" type="button">导入</button>
+              </div>
+            </div>
+            <input class="search" id="bankSearch" placeholder="搜索题目" />
+            <div class="list" id="bankList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="historyView">
+          <section class="panel full-panel">
+            <div class="panel-head">
+              <h3>历史</h3>
+              <div class="inline-actions">
+                <button class="ghost" id="exportHistoryBtn" type="button">导出</button>
+                <button class="ghost danger" id="clearHistoryBtn" type="button">清除</button>
+              </div>
+            </div>
+            <input class="search" id="historySearch" placeholder="搜索历史记录" />
+            <div class="list" id="historyList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="settingsView">
+          <section class="panel settings-panel account-panel">
+            <div class="panel-head">
+              <h3>账号同步</h3>
+              <div class="meta" id="accountStatus">未登录</div>
+            </div>
+
+            <div class="settings-grid">
+              <label>
+                <span>邮箱</span>
+                <input id="accountUsernameInput" type="email" autocomplete="email" />
+              </label>
+              <label>
+                <span>密码</span>
+                <input id="accountPasswordInput" type="password" autocomplete="current-password" />
+              </label>
+            </div>
+
+            <div class="settings-actions">
+              <button class="primary" id="accountLoginBtn" type="button">登录</button>
+              <button class="ghost" id="accountRegisterBtn" type="button">注册</button>
+              <button class="ghost" id="syncPullBtn" type="button">拉取同步</button>
+              <button class="ghost" id="syncPushBtn" type="button">推送当前</button>
+              <button class="ghost danger" id="accountLogoutBtn" type="button">退出</button>
+            </div>
+          </section>
+
+          <section class="panel settings-panel">
+            <div class="panel-head">
+              <h3>模型配置</h3>
+              <div class="meta" id="settingsStatus">未测试</div>
+            </div>
+
+            <div class="preset-row">
+              <button class="small preset" data-preset="openai" type="button">OpenAI</button>
+              <button class="small preset" data-preset="deepseek" type="button">DeepSeek</button>
+              <button class="small preset" data-preset="qwen" type="button">通义</button>
+              <button class="small preset" data-preset="siliconflow" type="button">SiliconFlow</button>
+            </div>
+
+            <div class="settings-grid">
+              <label>
+                <span>API Base URL</span>
+                <input id="baseUrlInput" autocomplete="off" />
+              </label>
+              <label>
+                <span>API Key</span>
+                <input id="apiKeyInput" type="password" autocomplete="off" />
+              </label>
+              <label>
+                <span>模型</span>
+                <input id="modelInput" autocomplete="off" />
+              </label>
+              <label>
+                <span>最大输出</span>
+                <input id="maxTokensInput" type="number" min="128" max="12000" step="128" />
+              </label>
+              <label>
+                <span>温度</span>
+                <input id="temperatureInput" type="number" min="0" max="2" step="0.1" />
+              </label>
+              <label>
+                <span>超时秒数</span>
+                <input id="timeoutInput" type="number" min="10" max="240" step="5" />
+              </label>
+            </div>
+
+            <div class="settings-actions">
+              <button class="primary" id="saveSettingsBtn" type="button">保存配置</button>
+              <button class="ghost" id="testSettingsBtn" type="button">测试连接</button>
+              <button class="ghost danger" id="forgetKeyBtn" type="button">清除 Key</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <input id="jsonImportInput" type="file" accept="application/json" hidden />
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

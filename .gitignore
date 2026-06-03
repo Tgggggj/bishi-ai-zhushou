@@ -1,0 +1,11 @@
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+desktop_settings.json
+latest_result.json
+sync_store.json
+.venv/
+.env
