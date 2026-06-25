@@ -145,7 +145,7 @@ def load_settings() -> dict[str, Any]:
         "temperature": 0.2,
         "timeout": 90,
         "fixed_prompt": DEFAULT_FIXED_PROMPT,
-        "use_vision_input": False,
+        "use_vision_input": True,
         "sync_username": "",
         "sync_token": "",
     }
@@ -933,6 +933,7 @@ class DesktopApp:
         self.hidden_to_tray = False
         self.exiting = False
         self.tray_icon_ready = False
+        self.reveal_window_after_answer = False
 
         self.root.title("练习助手 - 桌面版")
         geometry, minimum_size = compact_window_geometry(self.root)
@@ -1054,10 +1055,10 @@ class DesktopApp:
         ttk.Button(image_buttons, text="图片转文字", command=self.ocr_images_to_question).pack(side="left", padx=5)
         ttk.Button(image_buttons, text="清空图片", command=self.clear_images).pack(side="left")
 
-        self.use_vision_var = tk.BooleanVar(value=bool(self.settings.get("use_vision_input", False)))
+        self.use_vision_var = tk.BooleanVar(value=bool(self.settings.get("use_vision_input", True)))
         ttk.Checkbutton(
             parent,
-            text="解析时同时发送图片给模型（仅视觉模型）",
+            text="优先直接发送图片给视觉模型",
             variable=self.use_vision_var,
         ).grid(row=5, column=0, sticky="w")
 
@@ -1441,7 +1442,7 @@ class DesktopApp:
             self.update_image_status()
             self.set_status(f"已添加全屏截图: {name}")
             if auto_analyze:
-                self.ocr_latest_image_and_analyze(data_url)
+                self.analyze(force_vision=True)
         except Exception as exc:
             messagebox.showerror("截图失败", str(exc))
 
@@ -1629,8 +1630,8 @@ class DesktopApp:
                 close_selector("截图区域过小，已取消")
                 return
 
-            hint_var.set("区域已确认，正在转文字并解析...")
-            canvas.itemconfigure(progress, text="区域已确认，正在转文字并解析...")
+            hint_var.set("区域已确认，正在发送图片并解析...")
+            canvas.itemconfigure(progress, text="区域已确认，正在发送图片并解析...")
             selector.after(
                 180,
                 lambda: (
@@ -1640,6 +1641,7 @@ class DesktopApp:
                         prefix="longpress-region",
                         auto_recognize=auto_analyze,
                         restore_main=False,
+                        reveal_after_answer=True,
                     ),
                 ),
             )
@@ -1696,6 +1698,7 @@ class DesktopApp:
         prefix: str = "region",
         auto_recognize: bool = False,
         restore_main: bool = False,
+        reveal_after_answer: bool = False,
     ) -> None:
         try:
             try:
@@ -1713,7 +1716,7 @@ class DesktopApp:
             self.update_image_status()
             self.set_status(f"已添加区域截图: {name}")
             if auto_recognize:
-                self.ocr_latest_image_and_analyze(data_url)
+                self.analyze(force_vision=True, reveal_after_answer=reveal_after_answer)
         except Exception as exc:
             if restore_main:
                 self.root.deiconify()
@@ -1820,7 +1823,7 @@ class DesktopApp:
             ]
         )
 
-    def build_messages(self) -> list[dict[str, Any]]:
+    def build_messages(self, force_vision: bool = False) -> list[dict[str, Any]]:
         system_prompt = (
             "你是求职笔试、编程题和模拟面试的练习教练。"
             "你的用途仅限自我练习、复盘和模拟训练。"
@@ -1830,7 +1833,8 @@ class DesktopApp:
             f"{document_format_instruction()}"
         )
         prompt = self.build_prompt()
-        if not self.images or not self.use_vision_var.get():
+        use_vision = force_vision or bool(self.use_vision_var.get())
+        if not self.images or not use_vision:
             return [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
 
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
@@ -1908,29 +1912,39 @@ class DesktopApp:
         self.set_answer(answer)
         self.set_status("图片转文字失败")
 
-    def analyze(self) -> None:
+    def analyze(self, force_vision: bool = False, reveal_after_answer: bool = False) -> None:
         if self.busy:
+            if reveal_after_answer:
+                self.show_window()
             return
         question = self.question_text.get("1.0", "end").strip()
         if not question and not self.images:
+            if reveal_after_answer:
+                self.show_window()
             messagebox.showwarning("缺少题目", "请先输入题目或添加图片。")
             return
-        if not question and self.images and not self.use_vision_var.get():
+        use_vision = force_vision or bool(self.use_vision_var.get())
+        if not question and self.images and not use_vision:
             self.start_ocr([dict(item) for item in self.images], auto_analyze=True)
             return
         try:
             self.settings = self.current_settings()
             save_settings(self.settings)
-            messages = self.build_messages()
+            messages = self.build_messages(force_vision=force_vision)
             question_snapshot = self.question_text.get("1.0", "end").strip()
+            if not question_snapshot and self.images and use_vision:
+                question_snapshot = "见随附图片。"
             image_count = len(self.images)
             settings_snapshot = dict(self.settings)
             mode_snapshot = self.mode_var.get()
         except Exception as exc:
+            if reveal_after_answer:
+                self.show_window()
             messagebox.showerror("配置错误", str(exc))
             return
 
         self.busy = True
+        self.reveal_window_after_answer = self.reveal_window_after_answer or reveal_after_answer
         self.set_answer("正在请求模型...")
         self.set_status("解析中...")
         threading.Thread(
@@ -1965,6 +1979,9 @@ class DesktopApp:
         self.busy = False
         self.set_answer(clean_markdown_answer(answer))
         self.set_status(status)
+        if self.reveal_window_after_answer:
+            self.reveal_window_after_answer = False
+            self.show_window()
 
     def publish_current_answer(self) -> None:
         answer = clean_markdown_answer(self.answer_text.get("1.0", "end").strip())
