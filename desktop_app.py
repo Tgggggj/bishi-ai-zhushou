@@ -243,6 +243,58 @@ def call_openai_compatible(
     }
 
 
+def messages_include_images(messages: list[dict[str, Any]]) -> bool:
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    return True
+    return False
+
+
+def model_rejected_image_input(error_text: str) -> bool:
+    lowered = error_text.lower()
+    markers = [
+        "unknown variant image_url",
+        "expected text",
+        "image_url",
+        "only text",
+        "text only",
+        "content must be a string",
+        "unsupported image",
+        "does not support image",
+        "multimodal",
+        "multi-modal",
+        "vision",
+    ]
+    return any(marker in lowered for marker in markers)
+
+
+def extract_prompt_text(messages: list[dict[str, Any]]) -> str:
+    if len(messages) < 2:
+        return ""
+    content = messages[1].get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                return str(part.get("text", ""))
+    return ""
+
+
+def replace_user_message_with_text(messages: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
+    if not messages:
+        return [{"role": "user", "content": text}]
+    copied = [dict(message) for message in messages]
+    if len(copied) == 1:
+        copied.append({"role": "user", "content": text})
+    else:
+        copied[1] = {"role": "user", "content": text}
+    return copied
+
+
 def web_config_to_settings(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "base_url": config.get("baseUrl", config.get("base_url", "")),
@@ -1869,24 +1921,28 @@ class DesktopApp:
 
     def _ocr_worker(self, images: list[dict[str, Any]], auto_analyze: bool) -> None:
         try:
-            parts: list[str] = []
-            for index, item in enumerate(images, start=1):
-                image = image_from_data_url(item["data_url"])
-                try:
-                    text = ocr_image_text(image)
-                finally:
-                    image.close()
-                name = item.get("name") or f"image-{index}"
-                if text:
-                    parts.append(f"【图片 {index}：{name}】\n{text}")
-                else:
-                    parts.append(f"【图片 {index}：{name}】\n[未识别到文字]")
-            question_text = "\n\n".join(parts).strip()
-            if not question_text:
-                raise RuntimeError("未识别到可用文字。")
+            question_text = self.ocr_images_to_text(images)
             self.root.after(0, lambda: self.finish_ocr(question_text, auto_analyze))
         except Exception as exc:
             self.root.after(0, lambda: self.finish_ocr_error(str(exc)))
+
+    def ocr_images_to_text(self, images: list[dict[str, Any]]) -> str:
+        parts: list[str] = []
+        for index, item in enumerate(images, start=1):
+            image = image_from_data_url(item["data_url"])
+            try:
+                text = ocr_image_text(image)
+            finally:
+                image.close()
+            name = item.get("name") or f"image-{index}"
+            if text:
+                parts.append(f"【图片 {index}：{name}】\n{text}")
+            else:
+                parts.append(f"【图片 {index}：{name}】\n[未识别到文字]")
+        question_text = "\n\n".join(parts).strip()
+        if not question_text:
+            raise RuntimeError("未识别到可用文字。")
+        return question_text
 
     def finish_ocr(self, question_text: str, auto_analyze: bool) -> None:
         self.busy = False
@@ -1935,6 +1991,7 @@ class DesktopApp:
             if not question_snapshot and self.images and use_vision:
                 question_snapshot = "见随附图片。"
             image_count = len(self.images)
+            images_snapshot = [dict(item) for item in self.images]
             settings_snapshot = dict(self.settings)
             mode_snapshot = self.mode_var.get()
         except Exception as exc:
@@ -1949,7 +2006,7 @@ class DesktopApp:
         self.set_status("解析中...")
         threading.Thread(
             target=self._analyze_worker,
-            args=(settings_snapshot, messages, question_snapshot, image_count, mode_snapshot),
+            args=(settings_snapshot, messages, question_snapshot, image_count, mode_snapshot, images_snapshot),
             daemon=True,
         ).start()
 
@@ -1960,6 +2017,7 @@ class DesktopApp:
         question: str,
         image_count: int,
         mode: str,
+        images: list[dict[str, Any]],
     ) -> None:
         try:
             result = call_openai_compatible(settings, messages)
@@ -1969,7 +2027,43 @@ class DesktopApp:
             self.push_sync_result(question, answer, model, image_count, mode)
             self.root.after(0, lambda: self.finish_answer(answer, f"完成: {model}，已发布到移动端复盘"))
         except Exception as exc:
-            answer = clean_markdown_answer(f"请求失败：{exc}")
+            error_text = str(exc)
+            if images and messages_include_images(messages) and model_rejected_image_input(error_text):
+                try:
+                    self.root.after(
+                        0,
+                        lambda: (
+                            self.set_answer("当前模型接口不支持图片直传，正在自动转文字后重试..."),
+                            self.set_status("视觉输入被拒绝，正在 OCR 兜底"),
+                        ),
+                    )
+                    ocr_text = self.ocr_images_to_text(images)
+                    original_prompt = extract_prompt_text(messages)
+                    fallback_prompt = "\n\n".join(
+                        part
+                        for part in [
+                            original_prompt,
+                            "图片文字识别结果：",
+                            ocr_text,
+                        ]
+                        if part
+                    )
+                    fallback_messages = replace_user_message_with_text(messages, fallback_prompt)
+                    result = call_openai_compatible(settings, fallback_messages)
+                    answer = clean_markdown_answer(result["content"])
+                    model = result["model"]
+                    self.root.after(0, lambda text=ocr_text: self.replace_question_text(text))
+                    self.mobile_state.update(ocr_text, answer, model, image_count)
+                    self.push_sync_result(ocr_text, answer, model, image_count, mode)
+                    self.root.after(
+                        0,
+                        lambda: self.finish_answer(answer, f"完成: {model}，已用 OCR 兜底发布到移动端复盘"),
+                    )
+                    return
+                except Exception as fallback_exc:
+                    error_text = f"{error_text}\n自动 OCR 兜底也失败：{fallback_exc}"
+
+            answer = clean_markdown_answer(f"请求失败：{error_text}")
             model = str(settings.get("model", ""))
             self.mobile_state.update(question, answer, model, image_count)
             self.push_sync_result(question, answer, model, image_count, mode)
@@ -2115,6 +2209,10 @@ class DesktopApp:
         self.answer_text.delete("1.0", "end")
         self.answer_text.insert("1.0", clean_markdown_answer(text))
 
+    def replace_question_text(self, text: str) -> None:
+        self.question_text.delete("1.0", "end")
+        self.question_text.insert("1.0", text)
+
     def set_status(self, text: str) -> None:
         self.status_var.set(text)
 
@@ -2134,6 +2232,16 @@ class DesktopApp:
 def self_test() -> None:
     assert resolve_chat_url("https://example.com/v1") == "https://example.com/v1/chat/completions"
     assert image_to_data_url(Image.new("RGB", (8, 8), "#ffffff")).startswith("data:image/jpeg;base64,")
+    vision_messages = [
+        {"role": "system", "content": "系统"},
+        {"role": "user", "content": [{"type": "text", "text": "题目"}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AA=="}}]},
+    ]
+    assert messages_include_images(vision_messages)
+    assert model_rejected_image_input("unknown variant image_url, expected text")
+    assert extract_prompt_text(vision_messages) == "题目"
+    replaced = replace_user_message_with_text(vision_messages, "纯文本")
+    assert replaced[0]["role"] == "system"
+    assert replaced[1] == {"role": "user", "content": "纯文本"}
     print("desktop self-test ok")
 
 
