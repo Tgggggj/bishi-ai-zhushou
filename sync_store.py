@@ -98,12 +98,56 @@ def empty_profile(username: str) -> dict[str, Any]:
             "answer": "",
             "model": "",
             "imageCount": 0,
+            "images": [],
             "mode": "",
             "updatedAt": "",
         },
         "history": [],
         "bank": [],
+        "settings": empty_model_settings(),
     }
+
+
+def empty_model_settings() -> dict[str, Any]:
+    return {
+        "baseUrl": "",
+        "apiKey": "",
+        "model": "",
+        "maxTokens": 1800,
+        "temperature": 0.2,
+        "timeout": 90,
+        "fixedPrompt": "",
+        "useVisionInput": True,
+        "multiImageMode": False,
+        "updatedAt": "",
+    }
+
+
+def normalize_model_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    source = payload.get("settings") or payload.get("config") or payload
+    settings = empty_model_settings()
+    settings["baseUrl"] = str(source.get("baseUrl") or source.get("base_url") or "").strip()
+    settings["apiKey"] = str(source.get("apiKey") or source.get("api_key") or "").strip()
+    settings["model"] = str(source.get("model") or "").strip()
+    settings["maxTokens"] = int(float(source.get("maxTokens", source.get("max_tokens", 1800)) or 1800))
+    settings["temperature"] = float(source.get("temperature", 0.2) if source.get("temperature", 0.2) is not None else 0.2)
+    settings["timeout"] = float(source.get("timeout") or 90)
+    settings["fixedPrompt"] = str(source.get("fixedPrompt") or source.get("fixed_prompt") or "").strip()
+    settings["useVisionInput"] = bool(source.get("useVisionInput", source.get("use_vision_input", True)))
+    settings["multiImageMode"] = bool(source.get("multiImageMode", source.get("multi_image_mode", False)))
+    settings["updatedAt"] = str(source.get("updatedAt") or source.get("updated_at") or now_text())
+    return settings
+
+
+def ensure_profile(user: dict[str, Any], username: str) -> dict[str, Any]:
+    profile = user.setdefault("profile", empty_profile(username))
+    profile.setdefault("username", username)
+    profile.setdefault("email", username)
+    profile.setdefault("current", empty_profile(username)["current"])
+    profile.setdefault("history", [])
+    profile.setdefault("bank", [])
+    profile.setdefault("settings", empty_model_settings())
+    return profile
 
 
 def issue_session(store: dict[str, Any], username: str) -> str:
@@ -173,26 +217,48 @@ def get_profile(token: str) -> dict[str, Any]:
     with _LOCK:
         store = load_store()
         username = username_for_token(store, token)
-        profile = store["users"][username].setdefault("profile", empty_profile(username))
+        profile = ensure_profile(store["users"][username], username)
         return json.loads(json.dumps(profile, ensure_ascii=False))
 
 
 def update_current(token: str, payload: dict[str, Any]) -> dict[str, Any]:
+    images = normalize_sync_images(payload.get("images"))
     current = {
         "question": str(payload.get("question", "")),
         "answer": str(payload.get("answer", "")),
         "model": str(payload.get("model", "")),
         "imageCount": int(payload.get("imageCount") or payload.get("image_count") or 0),
+        "images": images,
         "mode": str(payload.get("mode", "")),
         "updatedAt": str(payload.get("updatedAt") or payload.get("updated_at") or now_text()),
     }
     with _LOCK:
         store = load_store()
         username = username_for_token(store, token)
-        profile = store["users"][username].setdefault("profile", empty_profile(username))
+        profile = ensure_profile(store["users"][username], username)
         profile["current"] = current
         save_store(store)
     return {"ok": True, "current": current}
+
+
+def normalize_sync_images(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    result: list[dict[str, str]] = []
+    for raw in value[-1:]:
+        if not isinstance(raw, dict):
+            continue
+        data_url = str(raw.get("dataUrl") or raw.get("data_url") or "")
+        if not data_url.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
+            continue
+        if len(data_url) > 3_000_000:
+            raise SyncError("同步图片过大，请重新截图或降低图片尺寸。", status=413)
+        result.append({
+            "id": str(raw.get("id") or ""),
+            "name": str(raw.get("name") or "image")[:180],
+            "dataUrl": data_url,
+        })
+    return result
 
 
 def replace_collection(token: str, name: str, items: list[Any]) -> dict[str, Any]:
@@ -202,7 +268,7 @@ def replace_collection(token: str, name: str, items: list[Any]) -> dict[str, Any
     with _LOCK:
         store = load_store()
         username = username_for_token(store, token)
-        profile = store["users"][username].setdefault("profile", empty_profile(username))
+        profile = ensure_profile(store["users"][username], username)
         profile[name] = clean_items
         save_store(store)
     return {"ok": True, name: clean_items}
@@ -212,7 +278,7 @@ def prepend_history_item(token: str, item: dict[str, Any]) -> dict[str, Any]:
     with _LOCK:
         store = load_store()
         username = username_for_token(store, token)
-        profile = store["users"][username].setdefault("profile", empty_profile(username))
+        profile = ensure_profile(store["users"][username], username)
         history = profile.setdefault("history", [])
         item_id = item.get("id")
         if item_id:
@@ -221,6 +287,17 @@ def prepend_history_item(token: str, item: dict[str, Any]) -> dict[str, Any]:
         profile["history"] = history[:MAX_SYNC_ITEMS]
         save_store(store)
         return {"ok": True, "history": profile["history"]}
+
+
+def update_settings(token: str, payload: dict[str, Any]) -> dict[str, Any]:
+    settings = normalize_model_settings(payload)
+    with _LOCK:
+        store = load_store()
+        username = username_for_token(store, token)
+        profile = ensure_profile(store["users"][username], username)
+        profile["settings"] = settings
+        save_store(store)
+    return {"ok": True, "settings": settings}
 
 
 def handle_sync_get(path: str, headers: Any) -> dict[str, Any] | None:
@@ -239,6 +316,9 @@ def handle_sync_get(path: str, headers: Any) -> dict[str, Any] | None:
     if path == "/api/sync/bank":
         profile = get_profile(token)
         return {"ok": True, "bank": profile.get("bank", [])}
+    if path == "/api/sync/settings":
+        profile = get_profile(token)
+        return {"ok": True, "settings": profile.get("settings", empty_model_settings())}
     if path == "/api/sync/profile":
         profile = get_profile(token)
         return {"ok": True, "profile": profile}
@@ -266,4 +346,6 @@ def handle_sync_post(path: str, payload: dict[str, Any], headers: Any) -> dict[s
     if path == "/api/sync/bank":
         items = payload.get("bank", payload.get("items", []))
         return replace_collection(token, "bank", items if isinstance(items, list) else [])
+    if path == "/api/sync/settings":
+        return update_settings(token, payload)
     return None

@@ -4,8 +4,13 @@ __pycache__/
 *.pyc
 *.pyo
 *.log
+*.exe
 desktop_settings.json
 latest_result.json
 sync_store.json
 .venv/
 .env
+node_modules/
+
+# Local Netlify folder
+.netlify

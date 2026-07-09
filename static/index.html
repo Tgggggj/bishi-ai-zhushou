@@ -3,48 +3,105 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BYO API Practice Assistant</title>
+    <title>面试 Copilot 练习助手</title>
+    <link rel="icon" href='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Cdefs%3E%3ClinearGradient id="g" x1="8" y1="8" x2="56" y2="56"%3E%3Cstop stop-color="%231677ff"/%3E%3Cstop offset=".62" stop-color="%23725cff"/%3E%3Cstop offset="1" stop-color="%2319c2ff"/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="64" height="64" rx="14" fill="url(%23g)"/%3E%3Cpath d="M18 42V22c0-4 3-7 7-7h14c4 0 7 3 7 7v20" fill="none" stroke="white" stroke-width="5" stroke-linecap="round"/%3E%3Cpath d="M20 42h24M25 31h14M25 42v7M39 42v7" fill="none" stroke="white" stroke-width="5" stroke-linecap="round"/%3E%3Ccircle cx="25" cy="25" r="2.7" fill="white"/%3E%3Ccircle cx="39" cy="25" r="2.7" fill="white"/%3E%3C/svg%3E' />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">A</div>
+          <div class="brand-mark">AI</div>
           <div>
-            <h1>练习助手</h1>
-            <p>BYO API</p>
+            <h1>面试 Copilot</h1>
+            <p>Practice Assistant</p>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
-          <button class="nav-item active" data-view="solve">解题</button>
-          <button class="nav-item" data-view="bank">题库</button>
-          <button class="nav-item" data-view="history">历史</button>
-          <button class="nav-item" data-view="settings">模型</button>
+          <button class="nav-item active" data-view="solve">实时辅助</button>
+          <button class="nav-item" data-view="bank">题库训练</button>
+          <button class="nav-item" data-view="history">复盘记录</button>
+          <button class="nav-item" data-view="settings">账号与模型</button>
         </nav>
         <div class="local-status">
           <span class="status-dot"></span>
-          <span>127.0.0.1 本地服务</span>
+          <span>云端同步已启用</span>
         </div>
       </aside>
 
       <main class="main">
         <header class="topbar">
           <div>
-            <div class="eyebrow">Practice only</div>
-            <h2 id="viewTitle">题目解析</h2>
+            <div class="eyebrow">AI interview copilot</div>
+            <h2 id="viewTitle">实时面试辅助工作台</h2>
           </div>
           <div class="top-actions">
             <button class="ghost" id="clearBtn" type="button">清空</button>
-            <button class="primary" id="runBtn" type="button">解析</button>
+            <button class="primary" id="runBtn" type="button">生成回答建议</button>
           </div>
         </header>
 
         <section class="view active" id="solveView">
+          <section class="copilot-hero">
+            <div class="hero-copy">
+              <span class="hero-kicker">桌面端截图 + 网页端复盘 + 同一账号同步</span>
+              <h3>把面试练习、题目解析和复盘整理放在一个工作台里。</h3>
+              <p>适合模拟面试、笔试复盘、代码题训练和截图题整理。输入题目或上传截图后，系统会生成结构化中文回答建议，并同步到云端账号。</p>
+              <div class="hero-actions">
+                <button class="primary" id="heroRunBtn" type="button">开始解析</button>
+                <button class="ghost" data-view-jump="settings" type="button">配置账号/模型</button>
+              </div>
+            </div>
+            <div class="live-console" aria-label="实时辅助状态">
+              <div class="console-head">
+                <strong>Live Session</strong>
+                <span>Practice mode</span>
+              </div>
+              <div class="signal-row">
+                <span class="signal active"></span>
+                <div>
+                  <b>题目捕获</b>
+                  <small>文本、截图、OCR 多来源输入</small>
+                </div>
+              </div>
+              <div class="signal-row">
+                <span class="signal"></span>
+                <div>
+                  <b>回答建议</b>
+                  <small>答案、解析、关键步骤、面试口径</small>
+                </div>
+              </div>
+              <div class="console-stats">
+                <div><strong>5</strong><span>训练模式</span></div>
+                <div><strong>120</strong><span>历史上限</span></div>
+                <div><strong>Cloud</strong><span>跨端同步</span></div>
+              </div>
+            </div>
+          </section>
+
+          <div class="feature-strip" aria-label="核心能力">
+            <div>
+              <b>实时面试辅助</b>
+              <span>截图或粘贴问题，快速生成回答结构。</span>
+            </div>
+            <div>
+              <b>模拟面试训练</b>
+              <span>输出 60 秒版本和展开版本，便于开口练习。</span>
+            </div>
+            <div>
+              <b>题库与复盘</b>
+              <span>把高频问题保存到题库，历史记录可检索。</span>
+            </div>
+            <div>
+              <b>网页/Windows 互通</b>
+              <span>同一邮箱账号登录后拉取最新内容。</span>
+            </div>
+          </div>
+
           <div class="workspace">
             <section class="panel input-panel">
               <div class="panel-head">
-                <h3>输入</h3>
+                <h3>问题输入</h3>
                 <select id="modeSelect" aria-label="模式">
                   <option value="general">综合题</option>
                   <option value="coding">编程题</option>
@@ -58,9 +115,9 @@
                 <label>
                   <span>回答风格</span>
                   <select id="styleSelect">
+                    <option value="concise">精简答案</option>
                     <option value="answer">答案 + 解析</option>
                     <option value="steps">只给思路</option>
-                    <option value="concise">精简答案</option>
                     <option value="coach">训练教练</option>
                   </select>
                 </label>
@@ -76,13 +133,13 @@
                 </label>
               </div>
 
-              <textarea id="questionInput" spellcheck="false" placeholder="粘贴练习题、面试题、代码或复盘材料"></textarea>
+              <textarea id="questionInput" spellcheck="false" placeholder="粘贴面试题、笔试题、代码、复盘材料，或从桌面端同步截图识别结果"></textarea>
 
               <div class="drop-zone" id="dropZone">
                 <input id="imageInput" type="file" accept="image/*" multiple />
                 <div>
-                  <strong>图片题</strong>
-                  <span>上传、拖入或从剪贴板粘贴</span>
+                  <strong>截图 / 图片题</strong>
+                  <span>上传、拖入或从剪贴板粘贴图片</span>
                 </div>
                 <button class="small" id="pickImageBtn" type="button">选择图片</button>
               </div>
@@ -91,13 +148,13 @@
 
               <div class="input-actions">
                 <button class="ghost" id="saveBankBtn" type="button">加入题库</button>
-                <button class="ghost" id="copyPromptBtn" type="button">复制提示</button>
+                <button class="ghost" id="copyPromptBtn" type="button">复制提示词</button>
               </div>
             </section>
 
             <section class="panel output-panel">
               <div class="panel-head">
-                <h3>输出</h3>
+                <h3>AI 回答建议</h3>
                 <div class="meta" id="answerMeta">等待解析</div>
               </div>
               <div class="answer" id="answerBox">
@@ -114,13 +171,13 @@
         <section class="view" id="bankView">
           <section class="panel full-panel">
             <div class="panel-head">
-              <h3>题库</h3>
+              <h3>题库训练</h3>
               <div class="inline-actions">
                 <button class="ghost" id="exportBankBtn" type="button">导出</button>
                 <button class="ghost" id="importBankBtn" type="button">导入</button>
               </div>
             </div>
-            <input class="search" id="bankSearch" placeholder="搜索题目" />
+            <input class="search" id="bankSearch" placeholder="搜索题目、岗位、关键词" />
             <div class="list" id="bankList"></div>
           </section>
         </section>
@@ -128,7 +185,7 @@
         <section class="view" id="historyView">
           <section class="panel full-panel">
             <div class="panel-head">
-              <h3>历史</h3>
+              <h3>复盘记录</h3>
               <div class="inline-actions">
                 <button class="ghost" id="exportHistoryBtn" type="button">导出</button>
                 <button class="ghost danger" id="clearHistoryBtn" type="button">清除</button>
@@ -140,10 +197,18 @@
         </section>
 
         <section class="view" id="settingsView">
-          <section class="panel settings-panel account-panel">
+          <section class="panel settings-panel account-panel" id="accountPanel" data-status="idle">
             <div class="panel-head">
               <h3>账号同步</h3>
               <div class="meta" id="accountStatus">未登录</div>
+            </div>
+
+            <div class="feedback-card" id="accountFeedback" data-status="idle">
+              <span class="feedback-icon"></span>
+              <div>
+                <strong id="accountFeedbackTitle">等待登录</strong>
+                <p id="accountFeedbackDetail">登录成功后会弹出确认窗口，并自动拉取云端数据。</p>
+              </div>
             </div>
 
             <div class="settings-grid">
@@ -155,21 +220,36 @@
                 <span>密码</span>
                 <input id="accountPasswordInput" type="password" autocomplete="current-password" />
               </label>
+              <label>
+                <span>验证码</span>
+                <input id="accountCodeInput" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+              </label>
             </div>
 
             <div class="settings-actions">
               <button class="primary" id="accountLoginBtn" type="button">登录</button>
-              <button class="ghost" id="accountRegisterBtn" type="button">注册</button>
+              <button class="ghost" id="accountSendRegisterCodeBtn" type="button">发送注册验证码</button>
+              <button class="ghost" id="accountRegisterBtn" type="button">验证码注册</button>
+              <button class="ghost" id="accountSendResetCodeBtn" type="button">发送重置验证码</button>
+              <button class="ghost" id="accountResetPasswordBtn" type="button">重置密码</button>
               <button class="ghost" id="syncPullBtn" type="button">拉取同步</button>
               <button class="ghost" id="syncPushBtn" type="button">推送当前</button>
               <button class="ghost danger" id="accountLogoutBtn" type="button">退出</button>
             </div>
           </section>
 
-          <section class="panel settings-panel">
+          <section class="panel settings-panel" id="modelPanel" data-status="idle">
             <div class="panel-head">
               <h3>模型配置</h3>
               <div class="meta" id="settingsStatus">未测试</div>
+            </div>
+
+            <div class="feedback-card" id="modelFeedback" data-status="idle">
+              <span class="feedback-icon"></span>
+              <div>
+                <strong id="modelFeedbackTitle">等待配置</strong>
+                <p id="modelFeedbackDetail">保存或测试连接后，这里会显示模型状态和下一步提示。</p>
+              </div>
             </div>
 
             <div class="preset-row">
@@ -217,6 +297,23 @@
     </div>
 
     <input id="jsonImportInput" type="file" accept="application/json" hidden />
+    <div class="modal-backdrop" id="statusModal" hidden>
+      <div class="status-modal" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle">
+        <span class="modal-icon" id="statusModalIcon"></span>
+        <h3 id="statusModalTitle">操作成功</h3>
+        <p id="statusModalMessage">状态已更新。</p>
+        <button class="primary" id="statusModalClose" type="button">知道了</button>
+      </div>
+    </div>
+    <div class="image-lightbox" id="imageLightbox" hidden>
+      <button class="lightbox-close" id="lightboxClose" type="button" aria-label="关闭图片预览">×</button>
+      <img id="lightboxImage" alt="截图放大预览" />
+      <div class="lightbox-controls">
+        <button id="lightboxZoomOut" type="button" aria-label="缩小图片">−</button>
+        <button id="lightboxReset" type="button">适应窗口</button>
+        <button id="lightboxZoomIn" type="button" aria-label="放大图片">+</button>
+      </div>
+    </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
   </body>

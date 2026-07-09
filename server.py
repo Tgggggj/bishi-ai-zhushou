@@ -50,13 +50,19 @@ def resolve_chat_url(base_url: str) -> str:
     return f"{base_url}/chat/completions"
 
 
-def call_openai_compatible(config: dict[str, Any], messages: list[dict[str, Any]]) -> dict[str, Any]:
+def call_openai_compatible(
+    config: dict[str, Any],
+    messages: list[dict[str, Any]],
+    on_delta: Any | None = None,
+    on_reset: Any | None = None,
+) -> dict[str, Any]:
     base_url = str(config.get("baseUrl", "")).strip()
     api_key = str(config.get("apiKey", "")).strip()
     model = str(config.get("model", "")).strip()
-    timeout = float(config.get("timeout") or 90)
+    timeout = min(55.0, max(20.0, float(config.get("timeout") or 55)))
     temperature = float(config.get("temperature") if config.get("temperature") not in {"", None} else 0.2)
-    max_tokens = int(config.get("maxTokens") or 1800)
+    prompt_text = json.dumps(messages, ensure_ascii=False)
+    max_tokens = min(int(config.get("maxTokens") or 1800), 2200 if "编程题" in prompt_text else 900)
 
     if not api_key:
         raise ValueError("缺少 API Key")
@@ -68,7 +74,11 @@ def call_openai_compatible(config: dict[str, Any], messages: list[dict[str, Any]
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
     }
+    if "aliyuncs.com" in base_url.lower() or "dashscope" in base_url.lower():
+        payload["enable_thinking"] = False
 
     req = request.Request(
         resolve_chat_url(base_url),
@@ -76,15 +86,47 @@ def call_openai_compatible(config: dict[str, Any], messages: list[dict[str, Any]
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "text/event-stream, application/json",
         },
         method="POST",
     )
 
     try:
         with request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            data = json.loads(raw)
+            content_type = str(resp.headers.get("Content-Type") or "").lower()
+            if "text/event-stream" not in content_type:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            else:
+                chunks: list[str] = []
+                response_model = model
+                usage: dict[str, Any] = {}
+                for raw_line in resp:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    raw = line[5:].strip()
+                    if not raw or raw == "[DONE]":
+                        continue
+                    event = json.loads(raw)
+                    response_model = str(event.get("model") or response_model)
+                    if isinstance(event.get("usage"), dict):
+                        usage = event["usage"]
+                    delta = (event.get("choices") or [{}])[0].get("delta", {}).get("content", "")
+                    if isinstance(delta, list):
+                        delta = "".join(str(part.get("text") or "") for part in delta if isinstance(part, dict))
+                    if delta:
+                        text = str(delta)
+                        chunks.append(text)
+                        if on_delta:
+                            on_delta(text)
+                if not chunks:
+                    raise RuntimeError("模型接口未返回可用内容")
+                return {
+                    "content": "".join(chunks),
+                    "model": response_model,
+                    "usage": usage,
+                    "createdAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"模型接口返回 {exc.code}: {body[:1200]}") from exc
@@ -98,6 +140,8 @@ def call_openai_compatible(config: dict[str, Any], messages: list[dict[str, Any]
     content = message.get("content", "")
     if isinstance(content, list):
         content = "\n".join(part.get("text", "") for part in content if isinstance(part, dict))
+    if content and on_delta:
+        on_delta(str(content))
 
     return {
         "content": content or json.dumps(data, ensure_ascii=False, indent=2),
@@ -127,6 +171,17 @@ class PracticeAssistantHandler(BaseHTTPRequestHandler):
             raise ValueError("请求体过大，请减少图片数量或压缩截图")
         raw = self.rfile.read(length)
         return json.loads(raw.decode("utf-8"))
+
+    def start_ndjson(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+    def send_stream_event(self, payload: dict[str, Any]) -> None:
+        self.wfile.write((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+        self.wfile.flush()
 
     def do_GET(self) -> None:
         path = unquote(self.path.split("?", 1)[0])
@@ -180,8 +235,17 @@ class PracticeAssistantHandler(BaseHTTPRequestHandler):
                 messages = payload.get("messages")
                 if not isinstance(messages, list):
                     raise ValueError("messages 必须是数组")
-                result = call_openai_compatible(payload.get("config") or {}, messages)
-                self.send_json({"ok": True, **result})
+                self.start_ndjson()
+                try:
+                    result = call_openai_compatible(
+                        payload.get("config") or {},
+                        messages,
+                        on_delta=lambda chunk: self.send_stream_event({"delta": chunk}),
+                        on_reset=lambda: self.send_stream_event({"reset": True}),
+                    )
+                    self.send_stream_event({"done": True, **result})
+                except Exception as exc:
+                    self.send_stream_event({"error": str(exc)})
                 return
 
             if self.path == "/api/check":
